@@ -1,0 +1,8 @@
+# Same .env as stc-front plus NUXT_BOT_URL / NUXT_BOT_API_KEY — see README.
+services:
+  stc-payments:
+    image: ghcr.io/raphsant/stc-payments:latest
+    restart: always
+    env_file: .env
+    ports:
+      - "29051:29051"
