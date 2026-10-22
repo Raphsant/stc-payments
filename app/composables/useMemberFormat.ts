@@ -13,6 +13,20 @@ const DAY = 86_400_000
 export const SOON_DAYS = 30
 
 export function useMemberFormat() {
+  const { public: { currency } } = useRuntimeConfig()
+  const money = new Intl.NumberFormat('es-MX', { style: 'currency', currency: currency as string })
+  const moneyShort = new Intl.NumberFormat('es-MX', { style: 'currency', currency: currency as string, notation: 'compact', maximumFractionDigits: 1 })
+
+  function formatMoney(n: number | null | undefined, short = false) {
+    return (short ? moneyShort : money).format(n ?? 0)
+  }
+
+  // Today as YYYY-MM-DD in the viewer's timezone (not UTC), for date inputs.
+  function localToday() {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
   function avatarGrad(name: string) {
     let h = 0
     for (const c of name) h = ((h * 31 + c.charCodeAt(0)) >>> 0)
@@ -72,5 +86,5 @@ export function useMemberFormat() {
     return out
   }
 
-  return { avatarGrad, initial, formatDate, toInputDate, expiryState, expiryBadge, statusBadge, visiblePages }
+  return { avatarGrad, initial, formatDate, formatMoney, localToday, currency: currency as string, toInputDate, expiryState, expiryBadge, statusBadge, visiblePages }
 }

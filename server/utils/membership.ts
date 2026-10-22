@@ -33,6 +33,15 @@ export function parseOptionalDate(value: unknown, field: string): Date | null | 
     return d
 }
 
+// Positive amount, rounded to cents.
+export function parseAmount(value: unknown): number {
+    const n = typeof value === 'string' ? Number(value.replace(/[,\s$]/g, '')) : Number(value)
+    if (!Number.isFinite(n) || n <= 0 || n > 10_000_000) {
+        throw createError({ statusCode: 400, statusMessage: 'Monto inválido' })
+    }
+    return Math.round(n * 100) / 100
+}
+
 export function addMonths(date: Date, months: number): Date {
     const d = new Date(date)
     d.setUTCMonth(d.getUTCMonth() + months)
@@ -62,6 +71,16 @@ export function serializeMembership(m: any) {
             uploadedAt: f.uploadedAt,
             uploadedBy: f.uploadedBy,
         })),
+        payments: [...(m.payments || [])]
+            .map((p: any) => ({
+                _id: String(p._id),
+                amount: p.amount,
+                paidAt: p.paidAt,
+                note: p.note,
+                fileId: p.fileId,
+                by: p.by,
+            }))
+            .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime()),
         pauses: m.pauses || [],
         currentPause: openPause,
         history: [...(m.history || [])].reverse(),

@@ -15,6 +15,7 @@ const isSuperAdmin = computed(() => (session.value?.user as any)?.role === 'supe
 const navItems = computed(() => [
   { label: 'Alphas', icon: 'i-lucide-crown',     to: '/' },
   { label: 'Deltas', icon: 'i-lucide-user-plus', to: '/deltas' },
+  { label: 'Ingresos', icon: 'i-lucide-chart-column', to: '/ingresos' },
 ])
 
 function isActive(to: string) {

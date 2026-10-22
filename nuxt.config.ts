@@ -36,7 +36,9 @@ export default defineNuxtConfig({
         botUrl: 'https://stc.snuuy.com',
         botApiKey: '',
         public: {
-            appVersion: pkg.version
+            appVersion: pkg.version,
+            // Every payment amount is in this one currency (NUXT_PUBLIC_CURRENCY).
+            currency: 'USD',
         }
     },
     devtools: {enabled: true},

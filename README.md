@@ -8,6 +8,11 @@ Panel de pagos para las membresías **Alpha** del Stock Trading Club. Hermano de
 - **Ficha** (`/miembros/:id`): fecha de compra, vencimiento, notas, comprobantes de pago
   (capturas/PDF) y contrato DocuSign firmado (PDF), historial de acciones.
   Botones para pausar X meses, reanudar y quitar Alpha.
+- **Pagos** (en la ficha): cada pago recibido con monto, fecha, nota y comprobante opcional.
+  Las renovaciones son pagos nuevos.
+- **Ingresos** (`/ingresos`): total, número de pagos y gráfica de ingresos por día, semana o mes
+  para el año en curso, 30/90 días, 12 meses, todo o un rango personalizado. Todos los montos van en
+  una sola moneda (`NUXT_PUBLIC_CURRENCY`, por defecto `USD`).
 - **Deltas** (`/deltas`): miembros sin `Alpha` ni `Alpha.` — botón para hacerlos Alpha.
 
 ## Compartido con stc-front

@@ -2,7 +2,7 @@
 const route = useRoute()
 const id = computed(() => route.params.id as string)
 const toast = useToast()
-const { formatDate, toInputDate, expiryBadge, statusBadge } = useMemberFormat()
+const { formatDate, formatMoney, localToday, currency, toInputDate, expiryBadge, statusBadge } = useMemberFormat()
 
 const { data, pending, error, refresh } = useFetch<any>(() => `/api/members/${id.value}`)
 
@@ -122,6 +122,55 @@ function fileSize(b: number) {
   return `${Math.max(1, Math.round(b / 1024))} KB`
 }
 
+// ── payments ─────────────────────────────────────────────
+const payments = computed<any[]>(() => m.value?.payments || [])
+const paidTotal = computed(() => payments.value.reduce((sum, p) => sum + p.amount, 0))
+const proofName = (fileId: string | null) => filesOf('payment').find((f: any) => f._id === fileId)?.fileName
+
+const payForm = reactive({ amount: '', paidAt: '', note: '', fileId: '' })
+function resetPayForm() {
+  payForm.amount = ''
+  payForm.paidAt = localToday()
+  payForm.note = ''
+  payForm.fileId = ''
+}
+resetPayForm()
+
+const addingPayment = ref(false)
+async function addPayment() {
+  addingPayment.value = true
+  try {
+    const membership = await $fetch(`/api/members/${id.value}/payments`, {
+      method: 'POST',
+      body: { amount: payForm.amount, paidAt: payForm.paidAt, note: payForm.note, fileId: payForm.fileId || null },
+    })
+    data.value = { ...data.value, membership }
+    toast.add({ title: 'Pago registrado.', color: 'success' })
+    resetPayForm()
+  } catch (e: any) {
+    toast.add({ title: 'No se pudo registrar el pago', description: e?.data?.statusMessage || e.message, color: 'error' })
+  } finally {
+    addingPayment.value = false
+  }
+}
+
+const paymentToDelete = ref<any>(null)
+const deletingPayment = ref(false)
+async function deletePayment() {
+  if (!paymentToDelete.value) return
+  deletingPayment.value = true
+  try {
+    const membership = await $fetch(`/api/members/${id.value}/payments/${paymentToDelete.value._id}`, { method: 'DELETE' })
+    data.value = { ...data.value, membership }
+    toast.add({ title: 'Pago eliminado.', color: 'success' })
+    paymentToDelete.value = null
+  } catch (e: any) {
+    toast.add({ title: 'Error', description: e?.data?.statusMessage || e.message, color: 'error' })
+  } finally {
+    deletingPayment.value = false
+  }
+}
+
 // ── role actions ─────────────────────────────────────────
 const action = ref<'promote' | 'pause' | 'resume' | 'remove' | null>(null)
 const actionMember = computed(() => user.value ? { _id: user.value._id, username: user.value.username, expiresAt: m.value?.expiresAt ?? null } : null)
@@ -139,10 +188,16 @@ const HISTORY: Record<string, { label: string; icon: string }> = {
   'payment-proof-added': { label: 'Comprobante agregado',   icon: 'i-lucide-receipt' },
   'contract-added':      { label: 'Contrato agregado',      icon: 'i-lucide-file-signature' },
   'file-deleted':        { label: 'Archivo quitado',        icon: 'i-lucide-file-x' },
+  'payment-added':       { label: 'Pago registrado',        icon: 'i-lucide-banknote' },
+  'payment-deleted':     { label: 'Pago eliminado',         icon: 'i-lucide-banknote' },
 }
 const FIELD_LABEL: Record<string, string> = { purchasedAt: 'compra', expiresAt: 'vencimiento', notes: 'notas' }
 function historyDetail(h: any) {
   if (h.action === 'updated') return h.detail.split(', ').map((f: string) => FIELD_LABEL[f] ?? f).join(', ')
+  if (h.action === 'payment-added' || h.action === 'payment-deleted') {
+    const [amount, date] = h.detail.split(' · ')
+    return `${formatMoney(Number(amount))} · ${formatDate(date)}`
+  }
   return h.detail
 }
 function formatDateTime(d: string) {
@@ -220,6 +275,7 @@ function formatDateTime(d: string) {
     </div>
 
     <div class="mb-grid">
+      <div class="flex flex-col" style="gap:18px">
       <!-- ── Membership details ─────────────────────────────── -->
       <section class="stc-panel">
         <div class="stc-panel-head">
@@ -258,6 +314,68 @@ function formatDateTime(d: string) {
           </div>
         </form>
       </section>
+
+      <!-- ── Payments ───────────────────────────────────────── -->
+      <section class="stc-panel">
+        <div class="stc-panel-head">
+          <div class="stc-panel-title"><UIcon name="i-lucide-banknote" class="w-5 h-5" /> Pagos</div>
+          <span v-if="payments.length" class="stc-mono" style="font-size:12px; color:var(--dim)">
+            Total <b style="color:var(--text); font-weight:600">{{ formatMoney(paidTotal) }}</b>
+          </span>
+        </div>
+        <div class="mb-body">
+          <div v-if="payments.length" class="mb-files">
+            <div v-for="p in payments" :key="p._id" class="mb-file">
+              <span class="mb-pay-amt stc-mono">{{ formatMoney(p.amount) }}</span>
+              <div class="flex-1 min-w-0">
+                <div class="mb-file-meta stc-mono" style="display:block">{{ formatDate(p.paidAt) }}<template v-if="p.by"> · {{ p.by }}</template></div>
+                <div v-if="p.note || p.fileId" class="mb-pay-note">
+                  <a v-if="p.fileId && proofName(p.fileId)" :href="`/api/members/${id}/files/${p.fileId}`" target="_blank" rel="noopener" class="mb-pay-proof" :title="proofName(p.fileId)">
+                    <UIcon name="i-lucide-receipt" class="w-3 h-3" /> comprobante
+                  </a>
+                  {{ p.note }}
+                </div>
+              </div>
+              <button class="p-rbtn danger" style="width:28px; height:28px" title="Eliminar pago" @click="paymentToDelete = p">
+                <UIcon name="i-lucide-x" class="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <form @submit.prevent="addPayment">
+            <div class="p-field-row">
+              <label class="p-field">
+                <span class="stc-eyebrow">Monto ({{ currency }})</span>
+                <input v-model="payForm.amount" type="number" min="0.01" step="0.01" inputmode="decimal" required class="stc-input" placeholder="0.00">
+              </label>
+              <label class="p-field">
+                <span class="stc-eyebrow">Fecha del pago</span>
+                <input v-model="payForm.paidAt" type="date" required class="stc-input">
+              </label>
+            </div>
+            <div class="p-field-row" style="margin-top:12px">
+              <label class="p-field">
+                <span class="stc-eyebrow">Comprobante</span>
+                <select v-model="payForm.fileId" class="stc-input" :disabled="!filesOf('payment').length">
+                  <option value="">{{ filesOf('payment').length ? 'Ninguno' : 'Sin comprobantes subidos' }}</option>
+                  <option v-for="f in filesOf('payment')" :key="f._id" :value="f._id">{{ f.fileName }}</option>
+                </select>
+              </label>
+              <label class="p-field">
+                <span class="stc-eyebrow">Nota</span>
+                <input v-model="payForm.note" type="text" maxlength="500" class="stc-input" placeholder="Plan, método…">
+              </label>
+            </div>
+            <div class="flex justify-end" style="margin-top:14px">
+              <button type="submit" class="stc-btn gold" :disabled="addingPayment || !payForm.amount || !payForm.paidAt">
+                <UIcon :name="addingPayment ? 'i-lucide-loader-circle' : 'i-lucide-plus'" class="w-4 h-4" :class="{ 'p-spin': addingPayment }" />
+                {{ addingPayment ? 'Registrando…' : 'Registrar pago' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+      </div>
 
       <!-- ── Files ──────────────────────────────────────────── -->
       <div class="flex flex-col" style="gap:18px">
@@ -346,6 +464,27 @@ function formatDateTime(d: string) {
       </div>
     </template>
   </UModal>
+
+  <UModal :open="!!paymentToDelete" :dismissible="!deletingPayment" @update:open="v => { if (!v && !deletingPayment) paymentToDelete = null }">
+    <template #content>
+      <div class="p-modal">
+        <div class="p-modal-head">
+          <span class="p-modal-glyph red"><UIcon name="i-lucide-banknote" class="w-5 h-5" /></span>
+          <h3 class="p-modal-title">Eliminar pago</h3>
+        </div>
+        <p class="p-modal-p">
+          ¿Eliminar el pago de <b>{{ formatMoney(paymentToDelete?.amount) }}</b> del <b>{{ formatDate(paymentToDelete?.paidAt) }}</b>?
+          Deja de contar en los ingresos.
+        </p>
+        <div class="p-modal-foot">
+          <button class="stc-btn" :disabled="deletingPayment" @click="paymentToDelete = null">Cancelar</button>
+          <button class="stc-btn danger" :disabled="deletingPayment" @click="deletePayment">
+            <UIcon name="i-lucide-x" class="w-3.5 h-3.5" /> {{ deletingPayment ? 'Eliminando…' : 'Eliminar' }}
+          </button>
+        </div>
+      </div>
+    </template>
+  </UModal>
 </template>
 
 <style scoped>
@@ -384,6 +523,11 @@ function formatDateTime(d: string) {
 .mb-file-name:hover { color: var(--gold-soft); text-decoration: underline; }
 .mb-file-meta { font-size: 11px; color: var(--faint); white-space: nowrap; }
 @media (max-width: 640px) { .mb-file-meta { display: none; } }
+
+.mb-pay-amt { font-size: 14px; font-weight: 600; color: var(--text); min-width: 96px; }
+.mb-pay-note { font-size: 12px; color: var(--dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mb-pay-proof { display: inline-flex; align-items: center; gap: 3px; color: var(--gold); text-decoration: none; margin-right: 4px; }
+.mb-pay-proof:hover { text-decoration: underline; }
 
 .mb-drop {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
