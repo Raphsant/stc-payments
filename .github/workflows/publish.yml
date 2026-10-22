@@ -3,6 +3,7 @@ name: Docker
 on:
   push:
     branches: [ "master" ] # Or "master", depending on your default branch name
+  workflow_dispatch:
 
 env:
   # Use docker.io for Docker Hub if you prefer
