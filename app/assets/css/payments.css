@@ -19,7 +19,12 @@
 
 /* ── Stat tiles row ─────────────────────────────────────── */
 .p-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-@media (max-width: 900px) { .p-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1199px) { .p-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px)  { .p-tiles { gap: 10px; } }
+/* Money in a tile: "$" and cents set smaller so the integer part carries the figure. */
+.p-money-sym  { font-size: .62em; margin-right: .06em; vertical-align: .32em; opacity: .9; }
+.p-money-frac { font-size: .52em; opacity: .7; }
+.p-cur-code   { font-family: var(--ui); font-size: 10px; letter-spacing: .08em; color: var(--faint); margin-left: 4px; }
 
 /* ── Filters ────────────────────────────────────────────── */
 .p-filters { padding: 15px 18px; display: flex; flex-direction: column; gap: 13px; }

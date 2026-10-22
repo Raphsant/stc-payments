@@ -500,6 +500,13 @@ function formatDateTime(d: string) {
   text-transform: uppercase; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .mb-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .mb-hero { padding: 18px 16px; }
+  .mb-name { font-size: 26px; }
+  .mb-actions { width: 100%; }
+  .mb-actions .stc-btn { flex: 1 1 140px; }
+  .mb-body { padding: 16px; }
+}
 
 .mb-banner {
   display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--blue);

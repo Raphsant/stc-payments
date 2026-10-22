@@ -427,6 +427,13 @@ html:not(.dark) .stc-topbar { background: rgba(247,245,240,.88); }
 .stc-ver:hover { background: rgba(234,157,19,.18); }
 
 /* ─── Botón de icono superior ─────────────────────────────── */
+/* Unlayered CSS beats Tailwind's md:hidden/md:block, so visibility lives here. */
+.stc-menu-btn { flex-shrink: 0; }
+.stc-topbar-sub { display: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (min-width: 768px) {
+  .stc-top-icon.stc-menu-btn { display: none; }
+  .stc-topbar-sub { display: block; }
+}
 .stc-top-icon {
   position: relative;
   width: 36px;
@@ -720,11 +727,16 @@ html:not(.dark) .stc-badge.neutral { background: rgba(0,0,0,.04); }
   flex-direction: column;
   gap: 12px;
   flex: 1;
+  min-width: 0;
+  /* la cifra se escala al ancho de la tarjeta, no al de la ventana */
+  container-type: inline-size;
 }
 .stc-tile-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
 }
 .stc-tile-head .lbl {
   font-family: var(--ui);
@@ -733,15 +745,22 @@ html:not(.dark) .stc-badge.neutral { background: rgba(0,0,0,.04); }
   letter-spacing: .16em;
   text-transform: uppercase;
   color: var(--faint);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .stc-tile-head .iconify,
-.stc-tile-head svg { color: var(--gold); opacity: .8; }
+.stc-tile-head svg { color: var(--gold); opacity: .8; flex-shrink: 0; }
 
 /* Big Shoulders para las cifras grandes — carácter de marca */
 .stc-tile-val {
   font-family: var(--disp);
   font-variant-numeric: tabular-nums;
-  font-size: 44px;
+  font-size: clamp(28px, 19cqi, 44px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-weight: 800;
   letter-spacing: .01em;
   line-height: .92;
@@ -1015,6 +1034,9 @@ html:not(.dark) .stc-scroll::-webkit-scrollbar-thumb {
     border-right: none;
   }
   .stc-page-title { font-size: 28px; }
+  .stc-tile { padding: 14px 16px; gap: 10px; }
+  .stc-panel-head { padding: 13px 16px; }
+  .stc-panel-title { font-size: 18px; }
 }
 
 /* ─── Transiciones de página / layout ─────────────────────── */

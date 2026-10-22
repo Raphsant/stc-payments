@@ -14,18 +14,16 @@ const { formatMoney } = useMemberFormat()
 
 const el = ref<HTMLElement | null>(null)
 const width = ref(800)
-const HEIGHT = 280
-const PAD = { top: 12, right: 8, bottom: 28, left: 64 }
 
 let ro: ResizeObserver | null = null
 onMounted(() => {
-  ro = new ResizeObserver(([e]) => { width.value = Math.max(280, e!.contentRect.width) })
+  ro = new ResizeObserver(([e]) => { width.value = Math.max(160, Math.floor(e!.contentRect.width)) })
   ro.observe(el.value!)
 })
 onBeforeUnmount(() => ro?.disconnect())
 
-const plotW = computed(() => width.value - PAD.left - PAD.right)
-const plotH = HEIGHT - PAD.top - PAD.bottom
+// Shorter on phones so the chart doesn't take the whole screen.
+const HEIGHT = computed(() => (width.value < 480 ? 220 : 280))
 
 // 1/2/2.5/5 × 10^n step so there are about 4 gridlines.
 const ticks = computed(() => {
@@ -39,12 +37,20 @@ const ticks = computed(() => {
   return out
 })
 const yMax = computed(() => ticks.value[ticks.value.length - 1]!)
-const y = (v: number) => PAD.top + plotH - (v / yMax.value) * plotH
+
+// Left gutter fits the widest y label (11px digits ≈ 6.6px each).
+const PAD = computed(() => ({
+  top: 12, right: 4, bottom: 28,
+  left: 12 + Math.ceil(Math.max(...ticks.value.map(t => formatMoney(t, true).length)) * 6.6),
+}))
+const plotW = computed(() => width.value - PAD.value.left - PAD.value.right)
+const plotH = computed(() => HEIGHT.value - PAD.value.top - PAD.value.bottom)
+const y = (v: number) => PAD.value.top + plotH.value - (v / yMax.value) * plotH.value
 
 const slot = computed(() => plotW.value / Math.max(1, props.buckets.length))
 const gap = computed(() => (slot.value > 6 ? 2 : slot.value > 3 ? 1 : 0))
 const barW = computed(() => Math.max(1, Math.min(56, slot.value - gap.value)))
-const barX = (i: number) => PAD.left + i * slot.value + (slot.value - barW.value) / 2
+const barX = (i: number) => PAD.value.left + i * slot.value + (slot.value - barW.value) / 2
 
 // Rounded top (4px), square at the baseline.
 function barPath(i: number, v: number) {
@@ -62,7 +68,10 @@ const tip = computed(() => {
   const b = props.buckets[hover.value]
   if (!b) return null
   const cx = barX(hover.value) + barW.value / 2
-  return { b, left: Math.min(Math.max(cx, 90), width.value - 90), top: y(b.total) }
+  // keep the tooltip inside the chart; it's at most 220px wide
+  const half = Math.min(110, width.value / 2)
+  // ~52px tall, drawn above its anchor: never anchor it higher than that, or the panel clips it
+  return { b, left: Math.min(Math.max(cx, half), width.value - half), top: Math.max(y(b.total), 60) }
 })
 </script>
 
@@ -118,7 +127,7 @@ const tip = computed(() => {
 .rc-tip {
   position: absolute; transform: translate(-50%, calc(-100% - 10px)); pointer-events: none;
   background: var(--panel-2); border: 1px solid var(--line-2); border-radius: var(--r-sm);
-  padding: 8px 11px; white-space: nowrap; box-shadow: 0 6px 20px rgba(0,0,0,.35);
+  padding: 8px 11px; width: max-content; max-width: min(220px, 100%); box-shadow: 0 6px 20px rgba(0,0,0,.35);
 }
 .rc-tip-val { font-family: var(--mono); font-size: 14px; font-weight: 600; color: var(--text); }
 .rc-tip-lbl { font-size: 11.5px; color: var(--dim); margin-top: 2px; }

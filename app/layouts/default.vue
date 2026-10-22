@@ -94,24 +94,24 @@ const isDark = computed(() => colorMode.value === 'dark')
       <!-- Topbar -->
       <header class="stc-topbar flex items-center justify-between px-4 py-3.5 md:px-8 md:py-[18px]">
         <!-- Left: mobile menu + title -->
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-4 min-w-0">
           <button
-            class="md:hidden stc-top-icon"
+            class="stc-top-icon stc-menu-btn"
             style="width:36px; height:36px"
             @click="isMobileMenuOpen = true"
           >
             <UIcon name="i-lucide-menu" class="w-[17px] h-[17px]" />
           </button>
-          <div>
+          <div class="min-w-0">
             <h1 class="stc-topbar-title">{{ currentRouteName }}</h1>
-            <div class="hidden md:block stc-eyebrow" style="margin-top:3px">
+            <div class="stc-topbar-sub stc-eyebrow" style="margin-top:3px">
               Stocks Trading Club · Membresías Alpha
             </div>
           </div>
         </div>
 
         <!-- Right: version, theme, bell -->
-        <div class="flex items-center" style="gap:10px">
+        <div class="flex items-center flex-shrink-0" style="gap:10px">
           <span class="stc-ver">v{{ appVersion }}</span>
 
           <button

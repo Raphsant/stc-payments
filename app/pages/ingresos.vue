@@ -6,7 +6,7 @@ useSeoMeta({
   description: 'Ingresos por membresías Alpha en el periodo seleccionado.',
 })
 
-const { formatDate, formatMoney, localToday } = useMemberFormat()
+const { formatDate, formatMoney, moneyParts, localToday, currency } = useMemberFormat()
 
 // ── range ─────────────────────────────────────────────────
 // Dates are YYYY-MM-DD and handled as UTC midnight, same as stored payments.
@@ -119,6 +119,8 @@ const buckets = computed<RevenueBucket[]>(() => {
 
 // ── stats ─────────────────────────────────────────────────
 const total = computed(() => payments.value.reduce((sum, p) => sum + p.amount, 0))
+const totalParts = computed(() => moneyParts(total.value))
+const avgParts = computed(() => (count.value ? moneyParts(total.value / count.value) : null))
 const count = computed(() => payments.value.length)
 const members = computed(() => new Set(payments.value.map(p => p.memberId)).size)
 const best = computed(() => buckets.value.reduce<RevenueBucket | null>((a, b) => (b.total > (a?.total ?? 0) ? b : a), null))
@@ -130,27 +132,37 @@ const rangeText = computed(() => {
 
 const view = ref<'chart' | 'table'>('chart')
 const recent = computed(() => [...payments.value].reverse())
+const LIST_STEP = 20
+const listLimit = ref(LIST_STEP)
+watch(range, () => { listLimit.value = LIST_STEP })
 </script>
 
 <template>
   <div class="p-page-head">
     <div>
       <div class="p-page-title">Ingresos</div>
-      <div class="p-page-sub">Dinero recibido por membresías Alpha · {{ rangeText }}</div>
+      <div class="p-page-sub">Dinero recibido por membresías Alpha · <span class="whitespace-nowrap">{{ rangeText }}</span></div>
     </div>
   </div>
 
   <!-- ── Filters ───────────────────────────────────────────── -->
   <section class="stc-panel p-filters">
-    <div class="p-frow">
-      <div class="p-seg">
-        <button v-for="p in PRESETS" :key="p.key" :class="{ on: preset === p.key }" @click="pickPreset(p.key)">{{ p.label }}</button>
+    <div class="r-frow">
+      <!-- six presets don't fit a phone: segmented on wide screens, a select on narrow ones -->
+      <div class="p-seg r-presets" role="group" aria-label="Periodo">
+        <button v-for="p in PRESETS" :key="p.key" :class="{ on: preset === p.key }" :aria-pressed="preset === p.key" @click="pickPreset(p.key)">{{ p.label }}</button>
       </div>
-      <div class="p-seg">
-        <button v-for="g in GRANS" :key="g.key" :class="{ on: gran === g.key }" @click="gran = g.key">{{ g.label }}</button>
+      <label class="r-presets-sel">
+        <span class="sr-only">Periodo</span>
+        <select class="stc-input" :value="preset" @change="pickPreset(($event.target as HTMLSelectElement).value as Preset)">
+          <option v-for="p in PRESETS" :key="p.key" :value="p.key">{{ p.label }}</option>
+        </select>
+      </label>
+      <div class="p-seg r-gran" role="group" aria-label="Agrupar por">
+        <button v-for="g in GRANS" :key="g.key" :class="{ on: gran === g.key }" :aria-pressed="gran === g.key" @click="gran = g.key">{{ g.label }}</button>
       </div>
     </div>
-    <div v-if="preset === 'custom'" class="p-frow">
+    <div v-if="preset === 'custom'" class="r-dates">
       <label class="r-date"><span class="stc-eyebrow">Desde</span><input v-model="custom.from" type="date" class="stc-input" :max="custom.to || undefined"></label>
       <label class="r-date"><span class="stc-eyebrow">Hasta</span><input v-model="custom.to" type="date" class="stc-input" :min="custom.from || undefined"></label>
     </div>
@@ -159,19 +171,24 @@ const recent = computed(() => [...payments.value].reverse())
   <!-- ── Tiles ─────────────────────────────────────────────── -->
   <div class="p-tiles">
     <div class="stc-panel stc-tile">
-      <div class="stc-tile-head"><span class="lbl">Total</span><UIcon name="i-lucide-banknote" class="w-4 h-4" /></div>
-      <div class="stc-tile-val gold">{{ formatMoney(total) }}</div>
+      <div class="stc-tile-head"><span class="lbl">Total <span class="p-cur-code">{{ currency }}</span></span><UIcon name="i-lucide-banknote" class="w-4 h-4" /></div>
+      <div class="stc-tile-val gold" :title="formatMoney(total)">
+        <span class="p-money-sym">{{ totalParts.symbol }}</span>{{ totalParts.int }}<span class="p-money-frac">{{ totalParts.frac }}</span>
+      </div>
     </div>
     <div class="stc-panel stc-tile">
       <div class="stc-tile-head"><span class="lbl">Pagos</span><UIcon name="i-lucide-receipt" class="w-4 h-4" /></div>
       <div class="stc-tile-val">{{ count }}</div>
     </div>
     <div class="stc-panel stc-tile">
-      <div class="stc-tile-head"><span class="lbl">Promedio por pago</span><UIcon name="i-lucide-divide" class="w-4 h-4" /></div>
-      <div class="stc-tile-val">{{ count ? formatMoney(total / count) : '—' }}</div>
+      <div class="stc-tile-head"><span class="lbl" title="Promedio por pago">Promedio <span class="p-cur-code">{{ currency }}</span></span><UIcon name="i-lucide-divide" class="w-4 h-4" /></div>
+      <div v-if="avgParts" class="stc-tile-val" :title="formatMoney(total / count)">
+        <span class="p-money-sym">{{ avgParts.symbol }}</span>{{ avgParts.int }}<span class="p-money-frac">{{ avgParts.frac }}</span>
+      </div>
+      <div v-else class="stc-tile-val">—</div>
     </div>
     <div class="stc-panel stc-tile">
-      <div class="stc-tile-head"><span class="lbl">Miembros que pagaron</span><UIcon name="i-lucide-users" class="w-4 h-4" /></div>
+      <div class="stc-tile-head"><span class="lbl" title="Miembros que pagaron">Miembros</span><UIcon name="i-lucide-users" class="w-4 h-4" /></div>
       <div class="stc-tile-val">{{ members }}</div>
     </div>
   </div>
@@ -181,13 +198,13 @@ const recent = computed(() => [...payments.value].reverse())
     <div class="stc-panel-head">
       <div class="stc-panel-title">
         <UIcon name="i-lucide-chart-column" class="w-5 h-5" />
-        Ingresos por {{ gran === 'day' ? 'día' : gran === 'week' ? 'semana' : 'mes' }}
+        Por {{ gran === 'day' ? 'día' : gran === 'week' ? 'semana' : 'mes' }}
       </div>
-      <div class="flex items-center gap-3">
+      <div class="r-head-right">
         <span v-if="best" class="r-best stc-mono">Mejor: <b>{{ best.title }}</b> · {{ formatMoney(best.total) }}</span>
         <div class="p-seg">
-          <button :class="{ on: view === 'chart' }" title="Gráfica" @click="view = 'chart'"><UIcon name="i-lucide-chart-column" class="w-3.5 h-3.5" /></button>
-          <button :class="{ on: view === 'table' }" title="Tabla" @click="view = 'table'"><UIcon name="i-lucide-table" class="w-3.5 h-3.5" /></button>
+          <button :class="{ on: view === 'chart' }" title="Gráfica" aria-label="Ver gráfica" :aria-pressed="view === 'chart'" @click="view = 'chart'"><UIcon name="i-lucide-chart-column" class="w-3.5 h-3.5" /></button>
+          <button :class="{ on: view === 'table' }" title="Tabla" aria-label="Ver tabla" :aria-pressed="view === 'table'" @click="view = 'table'"><UIcon name="i-lucide-table" class="w-3.5 h-3.5" /></button>
         </div>
       </div>
     </div>
@@ -204,7 +221,7 @@ const recent = computed(() => [...payments.value].reverse())
         <div class="stc-eyebrow" style="text-align:right">Total</div>
       </div>
       <div v-for="b in buckets" :key="b.key" class="p-trow p-tgrid r-bgrid">
-        <div class="p-cell-main">{{ b.title }}</div>
+        <div class="p-cell-main r-ellip">{{ b.title }}</div>
         <div class="p-cell-main stc-mono" style="text-align:right">{{ b.count }}</div>
         <div class="p-cell-main stc-mono" style="text-align:right" :style="{ color: b.total ? 'var(--text)' : 'var(--faint)' }">{{ formatMoney(b.total) }}</div>
       </div>
@@ -212,7 +229,7 @@ const recent = computed(() => [...payments.value].reverse())
   </section>
 
   <!-- ── Payments in range ─────────────────────────────────── -->
-  <section class="stc-panel">
+  <section class="stc-panel r-list">
     <div class="stc-panel-head">
       <div class="stc-panel-title"><UIcon name="i-lucide-list" class="w-5 h-5" /> Pagos del periodo</div>
       <span class="stc-mono" style="font-size:12px; color:var(--faint)">{{ count }}</span>
@@ -225,22 +242,55 @@ const recent = computed(() => [...payments.value].reverse())
         <div class="stc-eyebrow r-col-note">Nota</div>
         <div class="stc-eyebrow" style="text-align:right">Monto</div>
       </div>
-      <div v-for="p in recent" :key="p._id" class="p-trow p-tgrid r-pgrid">
-        <div class="p-cell-main stc-mono">{{ formatDate(p.paidAt) }}</div>
-        <NuxtLink :to="`/miembros/${p.memberId}`" class="p-cell-main r-member">{{ p.username }}</NuxtLink>
-        <div class="p-cell-sub r-col-note" style="margin:0">{{ p.note }}</div>
+      <div v-for="p in recent.slice(0, listLimit)" :key="p._id" class="p-trow p-tgrid r-pgrid">
+        <div class="p-cell-main stc-mono r-col-date">{{ formatDate(p.paidAt) }}</div>
+        <div class="min-w-0">
+          <NuxtLink :to="`/miembros/${p.memberId}`" class="p-cell-main r-member">{{ p.username }}</NuxtLink>
+          <div class="p-cell-sub r-ellip r-note-inline stc-mono">{{ formatDate(p.paidAt) }}<template v-if="p.note"> · {{ p.note }}</template></div>
+        </div>
+        <div class="p-cell-sub r-col-note r-ellip" style="margin:0" :title="p.note">{{ p.note }}</div>
         <div class="p-cell-main stc-mono" style="text-align:right; font-weight:600">{{ formatMoney(p.amount) }}</div>
+      </div>
+      <div v-if="recent.length > listLimit" class="p-pager">
+        <button class="stc-btn sm" @click="listLimit += LIST_STEP">
+          <UIcon name="i-lucide-chevron-down" class="w-3.5 h-3.5" />
+          Ver más <span class="stc-mono" style="color:var(--faint)">{{ listLimit }} de {{ recent.length }}</span>
+        </button>
       </div>
     </template>
   </section>
 </template>
 
 <style scoped>
+.r-frow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.r-presets-sel { display: none; }
+.r-dates { display: flex; gap: 12px; flex-wrap: wrap; }
 .r-date { display: flex; align-items: center; gap: 8px; }
 .r-date .stc-input { width: auto; }
-.r-best { font-size: 12px; color: var(--dim); }
+
+.r-head-right { display: flex; align-items: center; gap: 12px; min-width: 0; margin-left: auto; }
+.r-best { font-size: 12px; color: var(--dim); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .r-best b { color: var(--text); font-weight: 600; }
-@media (max-width: 767px) { .r-best { display: none; } }
+.r-head-right .p-seg { overflow: visible; }
+
+.r-ellip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r-note-inline { display: none; }
+
+/* Presets: below ~1100px the segmented control would wrap or scroll, use the select. */
+@media (max-width: 1099px) {
+  .r-presets { display: none; }
+  .r-presets-sel { display: block; flex: 1 1 180px; max-width: 260px; }
+}
+@media (max-width: 640px) {
+  .r-frow { gap: 10px; }
+  .r-presets-sel { max-width: none; }
+  .r-gran { flex: 1 1 100%; }
+  .r-gran button { flex: 1; justify-content: center; }
+  .r-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .r-date { flex-direction: column; align-items: stretch; gap: 6px; }
+  .r-date .stc-input { width: 100%; min-width: 0; }
+  .r-best { display: none; }
+}
 
 .r-chart { position: relative; padding: 16px 20px 12px; }
 .r-nodata {
@@ -251,12 +301,22 @@ const recent = computed(() => [...payments.value].reverse())
 .r-table.dimmed { opacity: .5; }
 .r-bgrid { grid-template-columns: minmax(0, 1fr) 80px 140px; }
 .r-pgrid { grid-template-columns: 130px minmax(0, 1fr) minmax(0, 1.5fr) 130px; }
-.r-member { text-decoration: none; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r-member { display: block; text-decoration: none; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .r-member:hover { color: var(--gold-soft); }
 
 @media (max-width: 767px) {
-  .r-chart { padding: 12px 8px 8px; }
-  .r-pgrid { grid-template-columns: 96px minmax(0, 1fr) 100px; }
-  .r-col-note { display: none; }
+  .r-chart { padding: 12px 10px 8px 6px; }
+  .r-bgrid { grid-template-columns: minmax(0, 1fr) 48px auto; }
+}
+
+/* The list switches on its own width (the sidebar eats into tablets):
+   narrow → member on top, date · note underneath, amount on the right. */
+.r-list { container-type: inline-size; }
+@container (max-width: 720px) {
+  .r-list .p-thead { display: none; }
+  .r-list .p-trow { padding: 12px 16px; }
+  .r-pgrid { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+  .r-col-date, .r-col-note { display: none; }
+  .r-note-inline { display: block; }
 }
 </style>

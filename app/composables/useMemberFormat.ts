@@ -15,10 +15,25 @@ export const SOON_DAYS = 30
 export function useMemberFormat() {
   const { public: { currency } } = useRuntimeConfig()
   const money = new Intl.NumberFormat('es-MX', { style: 'currency', currency: currency as string })
-  const moneyShort = new Intl.NumberFormat('es-MX', { style: 'currency', currency: currency as string, notation: 'compact', maximumFractionDigits: 1 })
+  // "$" instead of "USD": the panel has a single currency, shown next to big figures.
+  const moneyNarrow = new Intl.NumberFormat('es-MX', { style: 'currency', currency: currency as string, currencyDisplay: 'narrowSymbol' })
+  const compact = new Intl.NumberFormat('es-MX', { notation: 'compact', maximumFractionDigits: 1 })
+  const symbol = moneyNarrow.formatToParts(0).find(p => p.type === 'currency')?.value ?? ''
 
+  // short: "$80 k" for chart axes (es-MX's own compact currency format gives "80 k$").
   function formatMoney(n: number | null | undefined, short = false) {
-    return (short ? moneyShort : money).format(n ?? 0)
+    return short ? `${symbol}${compact.format(n ?? 0)}` : money.format(n ?? 0)
+  }
+
+  // Split for big figures, so the symbol and cents can be set smaller than the integer part.
+  function moneyParts(n: number | null | undefined) {
+    const out = { symbol: '', int: '', frac: '' }
+    for (const p of moneyNarrow.formatToParts(n ?? 0)) {
+      if (p.type === 'currency') out.symbol += p.value
+      else if (p.type === 'decimal' || p.type === 'fraction') out.frac += p.value
+      else if (p.type !== 'literal') out.int += p.value
+    }
+    return out
   }
 
   // Today as YYYY-MM-DD in the viewer's timezone (not UTC), for date inputs.
@@ -86,5 +101,5 @@ export function useMemberFormat() {
     return out
   }
 
-  return { avatarGrad, initial, formatDate, formatMoney, localToday, currency: currency as string, toInputDate, expiryState, expiryBadge, statusBadge, visiblePages }
+  return { avatarGrad, initial, formatDate, formatMoney, moneyParts, localToday, currency: currency as string, toInputDate, expiryState, expiryBadge, statusBadge, visiblePages }
 }
