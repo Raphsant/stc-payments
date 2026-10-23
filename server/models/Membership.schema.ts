@@ -32,12 +32,35 @@ export const Membership = defineMongooseModel({
         expiresAt: { type: Date, default: null },
         notes: { type: String, default: '' },
         files: { type: [fileSchema], default: [] },
-        // Money received for the membership (renewals add more). Amounts are in
-        // the panel's single currency (runtimeConfig.public.currency).
+        // What the member agreed to pay. Each renewal is a new contract with its
+        // own value and optional plan; with no installments the whole value is
+        // due on startsAt. Paid/owed is computed from the payments linked to it
+        // (see server/utils/contracts.ts), never stored.
+        contracts: {
+            type: [{
+                startsAt: { type: Date, required: true },
+                value: { type: Number, required: true, min: 0 },
+                installments: {
+                    type: [{
+                        dueAt: { type: Date, required: true },
+                        amount: { type: Number, required: true, min: 0 },
+                    }],
+                    default: [],
+                },
+                note: { type: String, default: '' },
+                by: { type: String },
+                createdAt: { type: Date, default: Date.now },
+            }],
+            default: [],
+        },
+        // Money received for the membership. Amounts are in the panel's single
+        // currency (runtimeConfig.public.currency). Revenue counts every payment
+        // on its paidAt, whatever contract it belongs to.
         payments: {
             type: [{
                 amount: { type: Number, required: true, min: 0 },
                 paidAt: { type: Date, required: true },
+                contractId: { type: String, default: null },
                 note: { type: String, default: '' },
                 fileId: { type: String, default: null }, // optional payment proof in `files`
                 by: { type: String },

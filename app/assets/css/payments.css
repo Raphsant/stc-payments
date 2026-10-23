@@ -25,6 +25,8 @@
 .p-money-sym  { font-size: .62em; margin-right: .06em; vertical-align: .32em; opacity: .9; }
 .p-money-frac { font-size: .52em; opacity: .7; }
 .p-cur-code   { font-family: var(--ui); font-size: 10px; letter-spacing: .08em; color: var(--faint); margin-left: 4px; }
+/* narrow tile: the label needs the room more than the currency code does */
+@container (max-width: 180px) { .p-cur-code { display: none; } }
 
 /* ── Filters ────────────────────────────────────────────── */
 .p-filters { padding: 15px 18px; display: flex; flex-direction: column; gap: 13px; }

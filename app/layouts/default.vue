@@ -16,6 +16,7 @@ const navItems = computed(() => [
   { label: 'Alphas', icon: 'i-lucide-crown',     to: '/' },
   { label: 'Deltas', icon: 'i-lucide-user-plus', to: '/deltas' },
   { label: 'Ingresos', icon: 'i-lucide-chart-column', to: '/ingresos' },
+  { label: 'Cobranza', icon: 'i-lucide-hand-coins',   to: '/cobranza' },
 ])
 
 function isActive(to: string) {

@@ -76,11 +76,13 @@ export function serializeMembership(m: any) {
                 _id: String(p._id),
                 amount: p.amount,
                 paidAt: p.paidAt,
+                contractId: p.contractId ?? null,
                 note: p.note,
                 fileId: p.fileId,
                 by: p.by,
             }))
             .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime()),
+        contracts: summarizeContracts(m),
         pauses: m.pauses || [],
         currentPause: openPause,
         history: [...(m.history || [])].reverse(),

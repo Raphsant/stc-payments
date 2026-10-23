@@ -8,8 +8,12 @@ Panel de pagos para las membresías **Alpha** del Stock Trading Club. Hermano de
 - **Ficha** (`/miembros/:id`): fecha de compra, vencimiento, notas, comprobantes de pago
   (capturas/PDF) y contrato DocuSign firmado (PDF), historial de acciones.
   Botones para pausar X meses, reanudar y quitar Alpha.
-- **Pagos** (en la ficha): cada pago recibido con monto, fecha, nota y comprobante opcional.
-  Las renovaciones son pagos nuevos.
+- **Contrato** (en la ficha): cuánto vale la membresía y cómo se paga — pago único o plan
+  (enganche + cuotas con fecha). Cada renovación es un contrato nuevo. Los pagos ligados al
+  contrato cubren las cuotas en orden de fecha; de ahí salen pagado, por cobrar y vencido.
+- **Pagos** (en la ficha): cada pago recibido con monto, fecha, contrato, nota y comprobante opcional.
+- **Cobranza** (`/cobranza`): por cobrar total, vencido, próximos 30 días, cobros programados por
+  mes y saldo por miembro.
 - **Ingresos** (`/ingresos`): total, número de pagos y gráfica de ingresos por día, semana o mes
   para el año en curso, 30/90 días, 12 meses, todo o un rango personalizado. Todos los montos van en
   una sola moneda (`NUXT_PUBLIC_CURRENCY`, por defecto `USD`).

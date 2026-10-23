@@ -127,14 +127,14 @@ const payments = computed<any[]>(() => m.value?.payments || [])
 const paidTotal = computed(() => payments.value.reduce((sum, p) => sum + p.amount, 0))
 const proofName = (fileId: string | null) => filesOf('payment').find((f: any) => f._id === fileId)?.fileName
 
-const payForm = reactive({ amount: '', paidAt: '', note: '', fileId: '' })
+const payForm = reactive({ amount: '', paidAt: '', note: '', fileId: '', contractId: '' })
 function resetPayForm() {
   payForm.amount = ''
   payForm.paidAt = localToday()
   payForm.note = ''
   payForm.fileId = ''
+  payForm.contractId = contracts.value[0]?._id ?? ''
 }
-resetPayForm()
 
 const addingPayment = ref(false)
 async function addPayment() {
@@ -142,7 +142,7 @@ async function addPayment() {
   try {
     const membership = await $fetch(`/api/members/${id.value}/payments`, {
       method: 'POST',
-      body: { amount: payForm.amount, paidAt: payForm.paidAt, note: payForm.note, fileId: payForm.fileId || null },
+      body: { amount: payForm.amount, paidAt: payForm.paidAt, note: payForm.note, fileId: payForm.fileId || null, contractId: payForm.contractId || null },
     })
     data.value = { ...data.value, membership }
     toast.add({ title: 'Pago registrado.', color: 'success' })
@@ -171,6 +171,64 @@ async function deletePayment() {
   }
 }
 
+async function assignPayment(p: any, contractId: string) {
+  try {
+    const membership = await $fetch(`/api/members/${id.value}/payments/${p._id}`, { method: 'PATCH', body: { contractId: contractId || null } })
+    data.value = { ...data.value, membership }
+    toast.add({ title: contractId ? 'Pago asignado al contrato.' : 'Pago sin contrato.', color: 'success' })
+  } catch (e: any) {
+    toast.add({ title: 'Error', description: e?.data?.statusMessage || e.message, color: 'error' })
+  }
+}
+
+// ── contracts ────────────────────────────────────────────
+// Newest first (server order). The panel shows one at a time; older ones are a click away.
+const contracts = computed<any[]>(() => m.value?.contracts || [])
+const contractLabel = (c: any) => `Desde ${formatDate(c.startsAt)}`
+const contractById = (cid: string | null) => contracts.value.find(c => c._id === cid)
+const unassigned = computed(() => payments.value.filter(p => !p.contractId || !contractById(p.contractId)))
+
+const shownContractId = ref<string | null>(null)
+const shownContract = computed(() => contractById(shownContractId.value) ?? contracts.value[0] ?? null)
+watch(contracts, (list, old) => {
+  // a new contract becomes the one shown, and the default for new payments
+  if (list.length !== old?.length) {
+    shownContractId.value = list[0]?._id ?? null
+    payForm.contractId = list[0]?._id ?? ''
+  }
+}, { immediate: true })
+resetPayForm()
+
+const editing = ref<{ contract: any | null } | null>(null)
+function onContractSaved(membership: any) {
+  data.value = { ...data.value, membership }
+  editing.value = null
+}
+
+const contractToDelete = ref<any>(null)
+const deletingContract = ref(false)
+async function deleteContract() {
+  if (!contractToDelete.value) return
+  deletingContract.value = true
+  try {
+    const membership = await $fetch(`/api/members/${id.value}/contracts/${contractToDelete.value._id}`, { method: 'DELETE' })
+    data.value = { ...data.value, membership }
+    toast.add({ title: 'Contrato eliminado.', color: 'success' })
+    contractToDelete.value = null
+  } catch (e: any) {
+    toast.add({ title: 'Error', description: e?.data?.statusMessage || e.message, color: 'error' })
+  } finally {
+    deletingContract.value = false
+  }
+}
+
+const INSTALLMENT: Record<string, { text: string; cls: string }> = {
+  paid:    { text: 'Pagada',    cls: 'green' },
+  partial: { text: 'Parcial',   cls: 'alpha' },
+  overdue: { text: 'Vencida',   cls: 'red' },
+  pending: { text: 'Pendiente', cls: 'none' },
+}
+
 // ── role actions ─────────────────────────────────────────
 const action = ref<'promote' | 'pause' | 'resume' | 'remove' | null>(null)
 const actionMember = computed(() => user.value ? { _id: user.value._id, username: user.value.username, expiresAt: m.value?.expiresAt ?? null } : null)
@@ -190,11 +248,20 @@ const HISTORY: Record<string, { label: string; icon: string }> = {
   'file-deleted':        { label: 'Archivo quitado',        icon: 'i-lucide-file-x' },
   'payment-added':       { label: 'Pago registrado',        icon: 'i-lucide-banknote' },
   'payment-deleted':     { label: 'Pago eliminado',         icon: 'i-lucide-banknote' },
+  'payment-assigned':    { label: 'Pago movido de contrato', icon: 'i-lucide-arrow-right-left' },
+  'contract-created':    { label: 'Contrato creado',        icon: 'i-lucide-file-pen-line' },
+  'contract-updated':    { label: 'Contrato editado',       icon: 'i-lucide-file-pen-line' },
+  'contract-deleted':    { label: 'Contrato eliminado',     icon: 'i-lucide-file-x' },
 }
 const FIELD_LABEL: Record<string, string> = { purchasedAt: 'compra', expiresAt: 'vencimiento', notes: 'notas' }
 function historyDetail(h: any) {
   if (h.action === 'updated') return h.detail.split(', ').map((f: string) => FIELD_LABEL[f] ?? f).join(', ')
-  if (h.action === 'payment-added' || h.action === 'payment-deleted') {
+  if (h.action === 'contract-created' || h.action === 'contract-updated') {
+    const [value, n] = h.detail.split(' · ')
+    return `${formatMoney(Number(value))} · ${n === '1' ? 'pago único' : `${n} cuotas`}`
+  }
+  if (h.action === 'contract-deleted') return formatMoney(Number(h.detail))
+  if (h.action === 'payment-added' || h.action === 'payment-deleted' || h.action === 'payment-assigned') {
     const [amount, date] = h.detail.split(' · ')
     return `${formatMoney(Number(amount))} · ${formatDate(date)}`
   }
@@ -276,43 +343,88 @@ function formatDateTime(d: string) {
 
     <div class="mb-grid">
       <div class="flex flex-col" style="gap:18px">
-      <!-- ── Membership details ─────────────────────────────── -->
+      <!-- ── Contract ───────────────────────────────────────── -->
       <section class="stc-panel">
         <div class="stc-panel-head">
-          <div class="stc-panel-title"><UIcon name="i-lucide-badge-dollar-sign" class="w-5 h-5" /> Membresía</div>
-          <span v-if="m?.expiresAt" class="p-rbadge" :class="expiryBadge(m.expiresAt).cls">{{ expiryBadge(m.expiresAt).text }}</span>
+          <div class="stc-panel-title"><UIcon name="i-lucide-file-pen-line" class="w-5 h-5" /> Contrato</div>
+          <button class="stc-btn sm" @click="editing = { contract: null }">
+            <UIcon name="i-lucide-plus" class="w-3.5 h-3.5" /> {{ contracts.length ? 'Renovación' : 'Nuevo contrato' }}
+          </button>
         </div>
-        <form class="mb-body" @submit.prevent="save">
-          <div class="p-field-row">
-            <label class="p-field">
-              <span class="stc-eyebrow">Fecha de compra</span>
-              <input v-model="form.purchasedAt" type="date" class="stc-input">
-            </label>
-            <label class="p-field">
-              <span class="stc-eyebrow">Vence</span>
-              <input v-model="form.expiresAt" type="date" class="stc-input">
-            </label>
-          </div>
-          <div class="flex items-center gap-2 flex-wrap" style="margin-top:10px">
-            <span class="stc-eyebrow" style="margin-right:2px">Vence a</span>
+
+        <div v-if="!shownContract" class="mb-body mb-empty">
+          <p>Sin contrato. Registra cuánto vale la membresía y, si paga en partes, su plan de pagos.</p>
+          <button class="stc-btn gold" @click="editing = { contract: null }">
+            <UIcon name="i-lucide-file-pen-line" class="w-4 h-4" /> Registrar contrato
+          </button>
+        </div>
+
+        <div v-else class="mb-body">
+          <div v-if="contracts.length > 1" class="p-seg mb-ctabs" role="tablist" aria-label="Contratos">
             <button
-              v-for="n in [1, 3, 6, 12]" :key="n" type="button" class="stc-btn sm"
-              :disabled="!form.purchasedAt" :title="form.purchasedAt ? '' : 'Pon primero la fecha de compra'"
-              @click="form.expiresAt = plusMonths(form.purchasedAt, n)"
-            >+{{ n }} {{ n === 1 ? 'mes' : 'meses' }}</button>
-          </div>
-          <label class="p-field" style="margin-top:16px">
-            <span class="stc-eyebrow">Notas</span>
-            <textarea v-model="form.notes" class="stc-input" maxlength="4000" placeholder="Método de pago, monto, plan, acuerdos…" />
-          </label>
-          <div class="flex justify-end gap-2" style="margin-top:16px">
-            <button type="button" class="stc-btn" :disabled="!dirty || saving" @click="resetForm">Descartar</button>
-            <button type="submit" class="stc-btn gold" :disabled="!dirty || saving">
-              <UIcon :name="saving ? 'i-lucide-loader-circle' : 'i-lucide-save'" class="w-4 h-4" :class="{ 'p-spin': saving }" />
-              {{ saving ? 'Guardando…' : 'Guardar' }}
+              v-for="c in contracts" :key="c._id" role="tab" :aria-selected="shownContract._id === c._id"
+              :class="{ on: shownContract._id === c._id }" @click="shownContractId = c._id"
+            >
+              {{ formatDate(c.startsAt) }}
+              <UIcon v-if="c.due === 0" name="i-lucide-check" class="w-3 h-3" />
             </button>
           </div>
-        </form>
+
+          <div class="mb-cstats">
+            <div><span class="stc-eyebrow">Valor</span><b class="stc-mono">{{ formatMoney(shownContract.value) }}</b></div>
+            <div><span class="stc-eyebrow">Pagado</span><b class="stc-mono">{{ formatMoney(shownContract.paid) }}</b></div>
+            <div>
+              <span class="stc-eyebrow">Por cobrar</span>
+              <b class="stc-mono" :style="{ color: shownContract.overdue ? 'var(--red)' : shownContract.due ? 'var(--gold-soft)' : 'var(--green)' }">{{ formatMoney(shownContract.due) }}</b>
+            </div>
+          </div>
+          <div
+            class="mb-cbar" role="progressbar" aria-label="Pagado del contrato"
+            :aria-valuenow="Math.round(Math.min(1, shownContract.paid / shownContract.value) * 100)" aria-valuemin="0" aria-valuemax="100"
+          >
+            <span :style="{ width: `${Math.min(100, (shownContract.paid / shownContract.value) * 100)}%` }" />
+          </div>
+
+          <div class="mb-cstatus">
+            <span v-if="shownContract.overdue" class="p-rbadge red">
+              <UIcon name="i-lucide-circle-alert" class="w-3 h-3" /> Vencido {{ formatMoney(shownContract.overdue) }} · hace {{ shownContract.overdueDays }}d
+            </span>
+            <span v-else-if="shownContract.due === 0" class="p-rbadge green">
+              <UIcon name="i-lucide-circle-check" class="w-3 h-3" /> Liquidado
+            </span>
+            <span v-else class="p-rbadge alpha">
+              <UIcon name="i-lucide-calendar-clock" class="w-3 h-3" /> Al corriente
+            </span>
+            <span v-if="shownContract.nextDue" class="mb-cnext">
+              Próximo: <b class="stc-mono">{{ formatMoney(shownContract.nextDue.amount) }}</b> el {{ formatDate(shownContract.nextDue.dueAt) }}
+            </span>
+            <span v-if="shownContract.credit" class="mb-cnext">Saldo a favor: <b class="stc-mono">{{ formatMoney(shownContract.credit) }}</b></span>
+          </div>
+
+          <div class="mb-plan">
+            <div class="stc-eyebrow" style="margin-bottom:8px">{{ shownContract.hasPlan ? `Plan de pagos · ${shownContract.installments.length} cuotas` : 'Pago único' }}</div>
+            <div v-for="(i, n) in shownContract.installments" :key="i._id" class="mb-inst">
+              <span class="mb-inst-n stc-mono">{{ n + 1 }}</span>
+              <span class="mb-inst-date stc-mono">{{ formatDate(i.dueAt) }}</span>
+              <span class="mb-inst-amt stc-mono">
+                {{ formatMoney(i.amount) }}
+                <small v-if="i.paid && i.remaining">faltan {{ formatMoney(i.remaining) }}</small>
+              </span>
+              <span class="p-rbadge mb-inst-badge" :class="INSTALLMENT[i.status]!.cls">{{ INSTALLMENT[i.status]!.text }}</span>
+            </div>
+          </div>
+
+          <p v-if="shownContract.note" class="mb-cnote">{{ shownContract.note }}</p>
+
+          <div class="flex justify-end gap-2" style="margin-top:14px">
+            <button class="stc-btn sm danger" @click="contractToDelete = shownContract">
+              <UIcon name="i-lucide-trash-2" class="w-3.5 h-3.5" /> Eliminar
+            </button>
+            <button class="stc-btn sm" @click="editing = { contract: shownContract }">
+              <UIcon name="i-lucide-pencil" class="w-3.5 h-3.5" /> Editar
+            </button>
+          </div>
+        </div>
       </section>
 
       <!-- ── Payments ───────────────────────────────────────── -->
@@ -328,7 +440,18 @@ function formatDateTime(d: string) {
             <div v-for="p in payments" :key="p._id" class="mb-file">
               <span class="mb-pay-amt stc-mono">{{ formatMoney(p.amount) }}</span>
               <div class="flex-1 min-w-0">
-                <div class="mb-file-meta stc-mono" style="display:block">{{ formatDate(p.paidAt) }}<template v-if="p.by"> · {{ p.by }}</template></div>
+                <div class="mb-file-meta stc-mono" style="display:block">
+                  {{ formatDate(p.paidAt) }}<template v-if="p.by"> · {{ p.by }}</template>
+                  <template v-if="contracts.length > 1 && contractById(p.contractId)"> · contrato {{ formatDate(contractById(p.contractId).startsAt) }}</template>
+                </div>
+                <label v-if="contracts.length && !contractById(p.contractId)" class="mb-pay-assign">
+                  <UIcon name="i-lucide-link-2-off" class="w-3 h-3" />
+                  <span class="sr-only">Asignar a contrato</span>
+                  <select class="mb-pay-assign-sel" :value="''" @change="assignPayment(p, ($event.target as HTMLSelectElement).value)">
+                    <option value="" disabled>Sin contrato · asignar a…</option>
+                    <option v-for="c in contracts" :key="c._id" :value="c._id">{{ contractLabel(c) }} · {{ formatMoney(c.value) }}</option>
+                  </select>
+                </label>
                 <div v-if="p.note || p.fileId" class="mb-pay-note">
                   <a v-if="p.fileId && proofName(p.fileId)" :href="`/api/members/${id}/files/${p.fileId}`" target="_blank" rel="noopener" class="mb-pay-proof" :title="proofName(p.fileId)">
                     <UIcon name="i-lucide-receipt" class="w-3 h-3" /> comprobante
@@ -353,6 +476,15 @@ function formatDateTime(d: string) {
                 <input v-model="payForm.paidAt" type="date" required class="stc-input">
               </label>
             </div>
+            <label v-if="contracts.length" class="p-field" style="margin-top:12px">
+              <span class="stc-eyebrow">Contrato</span>
+              <select v-model="payForm.contractId" class="stc-input">
+                <option v-for="c in contracts" :key="c._id" :value="c._id">
+                  {{ contractLabel(c) }} · por cobrar {{ formatMoney(c.due) }}
+                </option>
+                <option value="">Sin contrato</option>
+              </select>
+            </label>
             <div class="p-field-row" style="margin-top:12px">
               <label class="p-field">
                 <span class="stc-eyebrow">Comprobante</span>
@@ -379,6 +511,45 @@ function formatDateTime(d: string) {
 
       <!-- ── Files ──────────────────────────────────────────── -->
       <div class="flex flex-col" style="gap:18px">
+        <!-- ── Membership details ─────────────────────────────── -->
+        <section class="stc-panel">
+          <div class="stc-panel-head">
+            <div class="stc-panel-title"><UIcon name="i-lucide-badge-dollar-sign" class="w-5 h-5" /> Membresía</div>
+            <span v-if="m?.expiresAt" class="p-rbadge" :class="expiryBadge(m.expiresAt).cls">{{ expiryBadge(m.expiresAt).text }}</span>
+          </div>
+          <form class="mb-body" @submit.prevent="save">
+            <div class="p-field-row">
+              <label class="p-field">
+                <span class="stc-eyebrow">Fecha de compra</span>
+                <input v-model="form.purchasedAt" type="date" class="stc-input">
+              </label>
+              <label class="p-field">
+                <span class="stc-eyebrow">Vence</span>
+                <input v-model="form.expiresAt" type="date" class="stc-input">
+              </label>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap" style="margin-top:10px">
+              <span class="stc-eyebrow" style="margin-right:2px">Vence a</span>
+              <button
+                v-for="n in [1, 3, 6, 12]" :key="n" type="button" class="stc-btn sm"
+                :disabled="!form.purchasedAt" :title="form.purchasedAt ? '' : 'Pon primero la fecha de compra'"
+                @click="form.expiresAt = plusMonths(form.purchasedAt, n)"
+              >+{{ n }} {{ n === 1 ? 'mes' : 'meses' }}</button>
+            </div>
+            <label class="p-field" style="margin-top:16px">
+              <span class="stc-eyebrow">Notas</span>
+              <textarea v-model="form.notes" class="stc-input" maxlength="4000" placeholder="Método de pago, monto, plan, acuerdos…" />
+            </label>
+            <div class="flex justify-end gap-2" style="margin-top:16px">
+              <button type="button" class="stc-btn" :disabled="!dirty || saving" @click="resetForm">Descartar</button>
+              <button type="submit" class="stc-btn gold" :disabled="!dirty || saving">
+                <UIcon :name="saving ? 'i-lucide-loader-circle' : 'i-lucide-save'" class="w-4 h-4" :class="{ 'p-spin': saving }" />
+                {{ saving ? 'Guardando…' : 'Guardar' }}
+              </button>
+            </div>
+          </form>
+        </section>
+
         <section
           v-for="kind in (['payment', 'contract'] as const)" :key="kind"
           class="stc-panel"
@@ -465,6 +636,33 @@ function formatDateTime(d: string) {
     </template>
   </UModal>
 
+  <ContractModal
+    :open="!!editing" :member-id="id" :contract="editing?.contract ?? null"
+    :unassigned="unassigned" :default-start="m?.purchasedAt ? toInputDate(m.purchasedAt) : localToday()"
+    @close="editing = null" @saved="onContractSaved"
+  />
+
+  <UModal :open="!!contractToDelete" :dismissible="!deletingContract" @update:open="v => { if (!v && !deletingContract) contractToDelete = null }">
+    <template #content>
+      <div class="p-modal">
+        <div class="p-modal-head">
+          <span class="p-modal-glyph red"><UIcon name="i-lucide-file-x" class="w-5 h-5" /></span>
+          <h3 class="p-modal-title">Eliminar contrato</h3>
+        </div>
+        <p class="p-modal-p">
+          ¿Eliminar el contrato de <b>{{ formatMoney(contractToDelete?.value) }}</b> desde el <b>{{ formatDate(contractToDelete?.startsAt) }}</b>?
+          Sus {{ contractToDelete?.paymentCount }} pago(s) se conservan y siguen contando en los ingresos, pero quedan sin contrato.
+        </p>
+        <div class="p-modal-foot">
+          <button class="stc-btn" :disabled="deletingContract" @click="contractToDelete = null">Cancelar</button>
+          <button class="stc-btn danger" :disabled="deletingContract" @click="deleteContract">
+            <UIcon name="i-lucide-trash-2" class="w-3.5 h-3.5" /> {{ deletingContract ? 'Eliminando…' : 'Eliminar' }}
+          </button>
+        </div>
+      </div>
+    </template>
+  </UModal>
+
   <UModal :open="!!paymentToDelete" :dismissible="!deletingPayment" @update:open="v => { if (!v && !deletingPayment) paymentToDelete = null }">
     <template #content>
       <div class="p-modal">
@@ -530,6 +728,39 @@ function formatDateTime(d: string) {
 .mb-file-name:hover { color: var(--gold-soft); text-decoration: underline; }
 .mb-file-meta { font-size: 11px; color: var(--faint); white-space: nowrap; }
 @media (max-width: 640px) { .mb-file-meta { display: none; } }
+
+.mb-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+.mb-empty p { font-size: 13.5px; color: var(--dim); line-height: 1.5; margin: 0; }
+.mb-ctabs { margin-bottom: 16px; }
+.mb-cstats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.mb-cstats > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.mb-cstats b { font-size: 17px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mb-cbar { height: 6px; border-radius: 99px; background: var(--inset); border: 1px solid var(--line); margin-top: 14px; overflow: hidden; }
+.mb-cbar span { display: block; height: 100%; background: var(--gold); border-radius: 99px; }
+.mb-cstatus { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin-top: 12px; }
+.mb-cnext { font-size: 12.5px; color: var(--dim); }
+.mb-cnext b { color: var(--text); font-weight: 600; }
+.mb-plan { margin-top: 18px; }
+.mb-inst { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto 84px; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.mb-inst-badge { justify-self: end; }
+.mb-inst-n { font-size: 11px; color: var(--faint); text-align: right; }
+.mb-inst-date { font-size: 13px; color: var(--dim); white-space: nowrap; }
+.mb-inst-amt { font-size: 13px; font-weight: 600; color: var(--text); text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
+.mb-inst-amt small { font-size: 11px; font-weight: 500; color: var(--red); }
+.mb-cnote { font-size: 12.5px; color: var(--dim); margin: 12px 0 0; }
+@media (max-width: 480px) {
+  .mb-cstats { grid-template-columns: 1fr; gap: 8px; }
+  .mb-cstats > div { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .mb-cstats b { font-size: 15px; }
+  .mb-inst { grid-template-columns: 16px minmax(0, 1fr) auto 76px; gap: 8px; }
+  .mb-inst-date { font-size: 12px; }
+}
+.mb-pay-assign { display: flex; align-items: center; gap: 5px; margin-top: 4px; color: var(--gold); font-size: 12px; max-width: 100%; }
+.mb-pay-assign .iconify { flex-shrink: 0; }
+.mb-pay-assign-sel {
+  font: inherit; color: var(--gold-soft); background: transparent; border: 1px dashed var(--gold-ring);
+  border-radius: 5px; padding: 2px 6px; min-width: 0; max-width: 100%; text-overflow: ellipsis; cursor: pointer;
+}
 
 .mb-pay-amt { font-size: 14px; font-weight: 600; color: var(--text); min-width: 96px; }
 .mb-pay-note { font-size: 12px; color: var(--dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

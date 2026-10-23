@@ -9,7 +9,10 @@ export interface RevenueBucket {
   count: number
 }
 
-const props = defineProps<{ buckets: RevenueBucket[]; dimmed?: boolean }>()
+const props = withDefaults(
+  defineProps<{ buckets: RevenueBucket[]; dimmed?: boolean; unit?: [string, string]; label?: string }>(),
+  { unit: () => ['pago', 'pagos'], label: 'Ingresos por periodo' },
+)
 const { formatMoney } = useMemberFormat()
 
 const el = ref<HTMLElement | null>(null)
@@ -77,7 +80,7 @@ const tip = computed(() => {
 
 <template>
   <div ref="el" class="rc" :class="{ dimmed }" @mouseleave="hover = null">
-    <svg :width="width" :height="HEIGHT" role="img" aria-label="Ingresos por periodo">
+    <svg :width="width" :height="HEIGHT" role="img" :aria-label="label">
       <g class="rc-grid">
         <template v-for="t in ticks" :key="t">
           <line :x1="PAD.left" :x2="width - PAD.right" :y1="y(t)" :y2="y(t)" :class="{ base: t === 0 }" />
@@ -106,7 +109,7 @@ const tip = computed(() => {
 
     <div v-if="tip" class="rc-tip" :style="{ left: `${tip.left}px`, top: `${tip.top}px` }">
       <div class="rc-tip-val">{{ formatMoney(tip.b.total) }}</div>
-      <div class="rc-tip-lbl">{{ tip.b.title }} · {{ tip.b.count }} {{ tip.b.count === 1 ? 'pago' : 'pagos' }}</div>
+      <div class="rc-tip-lbl">{{ tip.b.title }} · {{ tip.b.count }} {{ tip.b.count === 1 ? unit[0] : unit[1] }}</div>
     </div>
   </div>
 </template>
